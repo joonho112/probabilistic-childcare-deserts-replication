@@ -51,7 +51,6 @@ jobs:
             any::dplyr
             any::tidyr
             any::ggplot2
-            any::sf
             any::gt
             any::kableExtra
 
