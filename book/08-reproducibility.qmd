@@ -1,0 +1,99 @@
+# Reproducibility, verification, and data access {#sec-reproducibility}
+
+This closing chapter collects the guarantees: how the pipeline is made
+deterministic, how you check that a reproduction succeeded, what reproduces
+exactly versus up to floating point, and where the data come from.
+
+## Seeds and determinism
+
+Fixed seeds run throughout, and the Bayesian fit is pinned to a single-threaded,
+bit-reproducible configuration:
+
+- **Preparation** uses seed `20260715`; the uncertainty preflight uses
+  `20260716`.
+- **The joint posterior** draws from three *independent* streams — latent
+  `20260716`, demand `20260717`, supply `20260718` — so the model's own
+  uncertainty and the two input uncertainties never share a random-number
+  stream (@sec-posterior).
+- **INLA** is forced serial: `num.threads = "1:1"`, the BLAS/OpenMP thread
+  counts pinned to 1, and each latent sampling batch resets both R's RNG and
+  INLA's internal seed. This defeats the thread-order floating-point drift that
+  would otherwise let a refit land on a slightly different integration
+  configuration (@sec-model).
+
+## What reproduces exactly, and what does not
+
+- **Track C is arithmetic on frozen inputs** — it joins tables and redraws
+  figures — so it reproduces every published figure and headline number exactly.
+- **A full Track-A rerun re-fits the model with INLA.** The seeds pin R's random
+  state, but a different linear-algebra backend or compiler can shift the fitted
+  values negligibly. Expect the declarations and counts to match; expect the
+  fifth decimal of a hyperparameter to be free to move. `sessioninfo.txt` records
+  the exact environment the published numbers came from (R 4.6.0, INLA 26.6.8,
+  `sf` 1.1-1).
+
+The pipeline also documents two **registered deviations** from the preregistered
+plan, both locked before any posterior was seen and logged in
+`outputs/tables/02_model_deviation_register.csv`: the likelihood moved from
+Poisson to Tweedie (the response is continuous with exact zeros), and the demand
+truncation lower bound moved from 0 to 1 child (to keep the inverse-demand
+multiplier finite). Both are explained where they arise (@sec-inputs, @sec-model).
+
+## Verifying a reproduction
+
+Two artifacts let you confirm — not assume — that a reproduction matched.
+
+**The scalar registry and the reproduction map.** Every headline value lives once
+in `outputs/key_numbers.csv` (63 keys). `verification/reproduction-map.csv` ties
+each paper-facing claim to the registry key, the script that computes it, and its
+value, so you can trace any number in the paper to the line of code that produced
+it.
+
+**The verification script.** `manifest/verify_outputs.R` checks the shipped
+outputs against the registry and the expected headline values — the analytic
+universes (1,436 tracts, 1,409 analyzed, 294,417 children), the declaration
+counts (512 FDR, 412 FDX, 13 counties), the nesting $\text{FDX}\subseteq
+\text{FDR}$, and the absence of any provider-identifying column — and exits
+non-zero on any mismatch:
+
+```sh
+Rscript manifest/verify_outputs.R
+```
+
+**Integrity of the shipped files.** `manifest/pipeline_manifest.csv` is a
+SHA-256 ledger of every shipped artifact; re-hashing a file and comparing it to
+the ledger detects any corruption or accidental edit.
+
+## The environment
+
+`sessioninfo.txt` is the full recorded session. `scripts/00_setup.R` enforces the
+R ≥ 4.3 floor, reports which packages are installed for each track, and prints
+the INLA install command and the environment variables the pipeline reads. The
+continuous-integration workflow in `.github/workflows/publish-book.yml` rebuilds
+this very guide from the shipped aggregate layer on every push, so the
+documentation cannot drift from the results it describes.
+
+## Data access
+
+The confidential inputs — Alabama DHR administrative child care records (under
+data-use agreement A24-0563, confidential under Ala. Code § 38-2-6) and the
+commercially licensed provider geocoding — are **not** distributed with this
+package and cannot be redistributed. `data/DATA_ACCESS.md` is the full statement:
+what each source is, why it is restricted, how a researcher would request it, and
+exactly which public products (ACS, TIGER) you can re-download to rebuild the
+public layers. The disclosure-safe aggregate results that this package *does*
+ship are the derived, tract- and county-level summaries described in
+@sec-exhibits — released with the paper, with small cells suppressed and no
+provider coordinates anywhere.
+
+If you are preparing this repository for public release, note the caution in
+`data/DATA_ACCESS.md`: because the package is signed and names the funding award
+and the data agreement, it should not be linked from a manuscript still under
+double-anonymized review.
+
+---
+
+That is the whole machine: a fixed access model, two propagated uncertainties, a
+Bayesian spatial fit, a joint posterior, error-controlled declarations, and a
+verification layer that ties every number back to the code that made it. Thank
+you for reading — and for reproducing.

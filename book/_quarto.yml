@@ -1,0 +1,52 @@
+project:
+  type: book
+  output-dir: _book
+  execute-dir: project
+
+book:
+  title: "Probabilistic Child Care Deserts: A Replication Guide"
+  subtitle: "Companion to Lee (2026), arXiv preprint"
+  author:
+    - name: JoonHo Lee
+      affiliations: [The University of Alabama]
+  date: "2026"
+  chapters:
+    - index.qmd
+    - 01-overview.qmd
+    - 02-getting-started.qmd
+    - 03-inputs-and-uncertainty.qmd
+    - 04-bym2-model.qmd
+    - 05-posterior-and-probability.qmd
+    - 06-declarations.qmd
+    - 07-reproducing-exhibits.qmd
+    - 08-reproducibility.qmd
+  repo-url: "https://github.com/joonho112/probabilistic-childcare-deserts-replication"
+  repo-subdir: "book"
+  repo-actions: [source, issue]
+  page-navigation: true
+  search: true
+  sidebar:
+    style: docked
+    collapse-level: 1
+
+bibliography: references.bib
+
+format:
+  html:
+    theme:
+      - cosmo
+      - custom.scss
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-overflow: wrap
+    fig-align: center
+    tbl-cap-location: bottom
+    smooth-scroll: true
+    link-external-newwindow: true
+
+execute:
+  freeze: auto
+  echo: true
+  warning: false
+  message: false

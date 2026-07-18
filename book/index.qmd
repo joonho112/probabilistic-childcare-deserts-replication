@@ -1,0 +1,75 @@
+# About this guide {.unnumbered}
+
+This is the replication package for *Probabilistic Child Care Deserts: Bayesian
+Accessibility Estimation with False Discovery Control in Alabama* (Lee, 2026).
+Its one job is to let you reproduce every number, table, and figure in the paper
+from runnable code and disclosure-safe shipped results — without taking any
+result on faith.
+
+The study starts from a deterministic child care **desert map** of Alabama — a
+binary "desert / not desert" label for each census tract, computed from an
+enhanced two-step floating catchment area (E2SFCA) access score. Binary maps like
+this steer real public investment, but they are computed from uncertain inputs
+and rarely say how sure any single designation is. This package builds the
+machinery that turns that map into an **error-controlled decision system**:
+it propagates the two dominant input uncertainties through a Bayesian spatial
+model, gives each tract a posterior *probability* of being a desert, and then
+declares deserts under procedures that control the false discovery rate.
+
+The guide is deliberately reproduction-focused. It walks you from a clean R
+session to the paper's exhibits and explains, at each step, both *how* the code
+works and *why* each modeling choice was made. The deep scientific write-up —
+the full argument and every result — lives in the paper itself; this guide is
+the runnable companion to it.
+
+## What this package reproduces
+
+- **The posterior desert-probability map** for 1,409 Alabama census tracts
+  (Figure F1), built from one Bayesian spatial fit plus 2,000 joint posterior
+  draws that carry the demand and capacity uncertainties.
+- **The error-controlled declarations**: 512 tracts declared at a false discovery
+  rate of $q=0.10$, a stricter 412-tract exceedance-controlled core, and 13 of 67
+  counties under a child-weighted rule (Figures F2, F3, F5).
+- **The reclassification** of the deterministic map: of its 690 point deserts,
+  500 survive the error control (72.5%), 190 lose declarable status without being
+  exonerated, and 12 enter (Figure F4, Table T2).
+- **The preregistered sensitivity analyses and the stability triangulation**
+  (Figure F6, Table T3), and the aggregate interactive map.
+
+Every headline value traces to a single registry, `outputs/key_numbers.csv`
+(63 keys); the figures and tables read that registry rather than recomputing, and
+`manifest/verify_outputs.R` checks the shipped artifacts against it.
+
+## Two ways in
+
+You do **not** need the confidential data to reproduce the exhibits. Pick the
+track that matches what you have; @sec-getting-started covers both in full.
+
+| Track | Starts from | Requires | Reproduces |
+|---|---|---|---|
+| **C — exhibits** *(default)* | the shipped aggregate layer `data/derived/` | R and CRAN packages only | every figure and the headline numbers |
+| **A — full rerun** | the restricted inputs + a built companion P01 codebase | R, INLA, and the restricted data | every number, from raw sources |
+
+Track C ships everything it needs and runs on a laptop in a minute. Track A
+reruns the whole Bayesian pipeline and requires data governed by a confidential
+data-use agreement (see `data/DATA_ACCESS.md`).
+
+## How to read this guide
+
+- @sec-overview — the study in brief: the problem, the approach, the findings.
+- @sec-getting-started — set up R, choose a track, and run your first
+  reproduction.
+- @sec-inputs, @sec-model, @sec-posterior, @sec-declarations — the method, one
+  stage at a time, with the code.
+- @sec-exhibits — rebuild each figure and table, and tour the shipped results.
+- @sec-reproducibility — seeds, determinism, verification, and data access.
+
+## Citation and contact
+
+Please cite the paper (see `CITATION.cff`). The package is released under the MIT
+License; the underlying data are not distributed and are governed by separate
+agreements (`data/DATA_ACCESS.md`).
+
+**JoonHo Lee**, The University of Alabama — corresponding author and package
+maintainer ([jlee296@ua.edu](mailto:jlee296@ua.edu), ORCID
+[0009-0006-4019-8703](https://orcid.org/0009-0006-4019-8703)).

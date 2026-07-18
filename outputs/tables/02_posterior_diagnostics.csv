@@ -1,0 +1,10 @@
+"metric","value"
+"n_draws",2000
+"latent_fitted_spearman",0.999870710601782
+"median_tract_posterior_coverage",0.275243252961303
+"median_95_width_low_cv",0.740450978830155
+"median_95_width_high_cv",2.18530674056308
+"median_relative_95_width_low_cv",3.10761437134301
+"median_relative_95_width_high_cv",6.7130098741976
+"structural_zero_input_tracts",203
+"maximum_draw",348.988104225717

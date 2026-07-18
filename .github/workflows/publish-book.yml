@@ -1,0 +1,75 @@
+name: Publish replication guide
+
+# Renders the Quarto replication guide in book/ and publishes it to GitHub Pages.
+# In the repository settings, set Pages -> Build and deployment -> Source to
+# "GitHub Actions" once; thereafter every push to main that touches book/ (or
+# the shipped aggregate layer the guide reads) refreshes the site.
+#
+# The guide is expository: it reads only the disclosure-safe aggregate layer
+# (data/derived/) and embeds static figures from book/assets/. It needs no
+# confidential data, no Census API key, and no spatial/Bayesian toolchain
+# (sf, INLA), so the runner installs a light CRAN-only stack.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "book/**"
+      - "data/derived/**"
+      - ".github/workflows/publish-book.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one Pages deployment at a time; queued runs wait rather than cancel.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: quarto-dev/quarto-actions/setup@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::knitr
+            any::rmarkdown
+            any::here
+            any::readr
+            any::dplyr
+            any::tidyr
+            any::ggplot2
+            any::sf
+            any::gt
+            any::kableExtra
+
+      - name: Render book
+        run: quarto render book
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: book/_book
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,5 @@
+"comparison_class","n_tracts","children","child_pct","high_cv_tracts","high_cv_pct","median_desert_probability"
+"both_point_and_fdr",500,114454,38.874793235445,154,30.8,0.913
+"point_only",190,36365,12.3515286141765,98,51.5789473684211,0.68875
+"fdr_only",12,1732,0.588281247346451,6,50,0.8305
+"neither",707,141866,48.1853969030321,347,49.0806223479491,0.255

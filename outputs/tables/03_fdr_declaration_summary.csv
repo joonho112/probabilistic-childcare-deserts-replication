@@ -1,0 +1,5 @@
+"procedure","declarations","target","achieved","unit"
+"probability_gt_0.5",816,,,"tracts"
+"FDR_q10",512,0.1,0.0999912109375,"tracts"
+"FDX_c10_alpha05",412,0.05,0.0495,"tracts"
+"county_child_weighted_FDR_q10",13,0.1,0.0989931345482587,"counties"

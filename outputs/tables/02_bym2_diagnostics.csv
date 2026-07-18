@@ -1,0 +1,13 @@
+"metric","value"
+"model_nodes",1409
+"model_islands",1
+"model_components",2
+"directed_links",8418
+"mean_neighbors",5.97444996451384
+"response_sum",101802.982974265
+"noninteger_response_rows",1206
+"spearman_input_posterior",0.933918120848318
+"pearson_input_posterior",0.869836498662461
+"DIC",13317.9093332453
+"WAIC",13262.6492407621
+"CPO_failures",0

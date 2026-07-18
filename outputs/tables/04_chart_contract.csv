@@ -1,0 +1,7 @@
+"figure","analytical_question","family","variant","rows","palette_policy","non_color_distinction","output"
+"F1","Where is posterior desert probability high?","Uncertainty & Benchmark","continuous tract choropleth",1409,"single-root blue","continuous legend","outputs/figures/F1_*.[png|pdf]"
+"F2","Which tracts are declared at FDR q=0.10?","Comparison & Ranking","binary tract choropleth with point-map outline",1409,"orange + neutral","outline + labels","outputs/figures/F2_*.[png|pdf]"
+"F3","Which tracts remain under FDX c=0.10, alpha=0.05?","Comparison & Ranking","binary tract choropleth with point-map outline",1409,"blue + neutral","outline + labels","outputs/figures/F3_*.[png|pdf]"
+"F4","Where do P01 point and P07 FDR classifications differ?","Composition","four-state tract choropleth",1409,"four approved roots + neutral","named legend states","outputs/figures/F4_*.[png|pdf]"
+"F5","Which counties are declared under child-weighted LIS?","Comparison & Ranking","binary county choropleth",67,"orange + neutral","county boundaries + labels","outputs/figures/F5_*.[png|pdf]"
+"F6","How do declarations move under preregistered alternatives and triangulation?","Uncertainty & Benchmark","three-panel dot/bar summary",9,"hard two-root cap + neutral","facets + direct values","outputs/figures/F6_*.[png|pdf]"

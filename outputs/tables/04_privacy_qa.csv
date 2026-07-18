@@ -1,0 +1,5 @@
+"check","observed","passed"
+"tract_values_masked_below_10",46,TRUE
+"provider_coordinates_in_outputs",0,TRUE
+"race_ethnicity_tract_cells",0,TRUE
+"leaflet_aggregate_only",1,TRUE

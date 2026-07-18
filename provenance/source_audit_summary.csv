@@ -1,0 +1,18 @@
+"check","observed","expected","passed"
+"tracts","1436","1436",TRUE
+"nonzero_demand_tracts","1409","1409",TRUE
+"zero_demand_tracts","27","27",TRUE
+"children_under5","294417","294417",TRUE
+"distinct_under5_moe","1246","1246",TRUE
+"high_cv_tracts","605","605",TRUE
+"providers","2164","2164",TRUE
+"day_capacity","117062","117062",TRUE
+"p01_e2sfca_deserts","690","690",TRUE
+"p01_always_desert","519","519",TRUE
+"full_graph_islands","2","2",TRUE
+"full_graph_components","3","3",TRUE
+"model_graph_islands","1","1",TRUE
+"model_graph_components","2","2",TRUE
+"quarterly_survey_waves","4",">=1 if available",TRUE
+"survey_provider_linkage","none","none",TRUE
+"inla_bym2_smoke","pass","pass",TRUE

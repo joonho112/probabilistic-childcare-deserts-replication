@@ -1,0 +1,116 @@
+# Getting started {#sec-getting-started}
+
+This chapter gets you from a clone to a reproduced figure. It covers the two
+reproduction tracks, the software you need, and the repository layout.
+
+## Choose a track
+
+| | **Track C — exhibits** *(default)* | **Track A — full rerun** |
+|---|---|---|
+| Starts from | the shipped aggregate layer `data/derived/` | the restricted inputs + a built companion P01 codebase |
+| Requires | R and CRAN packages only | R, INLA, and the confidential data |
+| Reproduces | every figure and the headline numbers | every number, from raw sources |
+| Time | about a minute on a laptop | tens of minutes, plus data-access lead time |
+
+**Start with Track C.** It ships everything it needs, needs no Census key and no
+INLA, and touches no restricted data. Track A is for readers who have obtained
+the confidential inputs (see `data/DATA_ACCESS.md`) and want to regenerate the
+posterior from scratch.
+
+## Requirements
+
+- **R ≥ 4.3.** The authors ran R 4.6.0. Open the project with
+  `probabilistic-childcare-deserts-replication.Rproj`, or run from the package root.
+- **Track C — CRAN only.** `sf`, `dplyr`, `tidyr`, `readr`, `ggplot2`,
+  `patchwork`, `scales`, `gt`, `leaflet`, `htmlwidgets`, `digest`.
+- **Track A — add the modeling stack.** `spdep`, `Matrix`, `truncnorm`,
+  `readxl`, `furrr`, `future`, and **INLA**. INLA is not on CRAN; install it from
+  its own repository:
+
+  ```r
+  install.packages(
+    "INLA",
+    repos = c(INLA = "https://inla.r-inla-download.org/R/stable"),
+    dep = TRUE
+  )
+  ```
+
+  The authors used **INLA 26.6.8**. The full recorded environment is in
+  `sessioninfo.txt`.
+
+Source the setup helper once to check your environment and see what is installed:
+
+```r
+source("scripts/00_setup.R")
+```
+
+## Quick start (Track C)
+
+From the package root:
+
+```r
+source("scripts/00_setup.R")            # environment check
+```
+```sh
+Rscript scripts/reproduce_exhibits.R    # rebuild F1–F6 into results/figures/
+Rscript manifest/verify_outputs.R       # check the shipped outputs against the registry
+```
+
+`reproduce_exhibits.R` reads only `data/derived/` — the disclosure-safe tract and
+county tables and the public simplified tract geometry — and writes the six
+figures to `results/figures/`. Compare them against the canonical
+`outputs/figures/` the authors shipped. @sec-exhibits walks through each exhibit.
+
+## Running the full pipeline (Track A)
+
+Obtain the restricted inputs and point the environment variables at them (see
+`data/DATA_ACCESS.md` and `restricted-data/README.md`):
+
+```sh
+export P01_CODEBASE_ROOT=/path/to/your/built/codebase-P01
+export P07_DHR_SURVEY_DIR=/path/to/your/dhr_surveys
+```
+
+Then run the eleven steps in order, or all at once with the orchestrator:
+
+```sh
+Rscript scripts/99_reproduce_all.R      # runs steps 0.2 → 4.1, fail-closed
+Rscript scripts/build_derived.R         # refresh the disclosure-safe layer
+Rscript manifest/verify_outputs.R       # verify against the registry
+```
+
+Each step validates its upstream contract and stops on a failed gate. The
+canonical order and the per-step outputs are in
+[`_run_order.md`](../_run_order.md).
+
+## Repository layout
+
+```
+probabilistic-childcare-deserts-replication/
+├── README.md                  package overview, tracks, citation
+├── _run_order.md              the canonical run order (both tracks)
+├── scripts/                   the pipeline
+│   ├── 00_setup.R             environment check
+│   ├── 00-2 … 04-1            the eleven numbered analysis steps
+│   ├── build_derived.R        custodian: protected objects → data/derived/
+│   ├── reproduce_exhibits.R   Track C: rebuild figures from data/derived/
+│   └── 99_reproduce_all.R     Track A: run the whole pipeline
+├── R/                         function libraries (fct_io, fct_uncertainty,
+│                              fct_bym2, fct_fdr, fct_viz, fct_leaflet)
+├── data/
+│   ├── DATA_ACCESS.md         how to obtain every input
+│   └── derived/               the shipped disclosure-safe aggregate layer
+├── restricted-data/           where restricted inputs go locally (git-ignored)
+├── outputs/                   the authors' canonical exhibits (figures, tables,
+│                              maps, key_numbers.csv)
+├── results/                   Track C regeneration target
+├── provenance/                source integrity + calibration metadata
+├── manifest/                  SHA-256 ledger + verify_outputs.R
+├── verification/              reproduction map + expected headline values
+└── book/                      this guide
+```
+
+The two contracts to keep in mind as you read the code: every headline number is
+written once to `outputs/key_numbers.csv` and read from there (never recomputed
+downstream), and the entire `data/` tree except `data/derived/` is git-ignored so
+no protected object can be committed. @sec-reproducibility returns to both.

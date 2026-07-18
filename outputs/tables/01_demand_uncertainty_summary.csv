@@ -1,0 +1,6 @@
+"group","n_tracts","children","rule"
+"all",1436,294417,"canonical"
+"eligible",1409,294417,"nonzero demand"
+"high_cv",605,78570,"CV > 0.40"
+"cv_le_0.40",804,215847,"CV <= 0.40"
+"zero_demand",27,0,"excluded from classifications"

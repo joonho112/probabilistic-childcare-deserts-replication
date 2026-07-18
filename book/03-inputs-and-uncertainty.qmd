@@ -1,0 +1,295 @@
+# Inputs and input uncertainty {#sec-inputs}
+
+@sec-overview framed the study: take the companion deterministic desert study
+(P01), hold its accessibility design fixed, and ask what survives once the two
+largest sources of input error are carried through the map rather than assumed
+away. This chapter is where that program starts. Working from a running session
+(@sec-getting-started), it walks through the four preparatory steps that turn
+read-only P01 assets and four restricted survey workbooks into three things the
+model will need: a *fixed* accessibility operator, calibrated *distributions*
+for the two randomized inputs, and a *frozen* specification hashed before any
+result is seen.
+
+The helpers live in `R/fct_uncertainty.R`; the pipeline steps that call them are
+`scripts/00-2_audit_sources.R`, `scripts/01-1_demand_uncertainty.R`,
+`scripts/01-2_supply_uncertainty.R`, and `scripts/01-3_preregister_decisions.R`.
+Everything here belongs to the full-pipeline track; it runs only where the
+restricted inputs are present. If you are reproducing exhibits from the shipped
+aggregate layer, you can read this chapter for understanding and skip the
+commands.
+
+## The scope contract
+
+The single most important design decision in this study is what it does *not*
+randomize. An accessibility map has many moving parts — how far a family will
+travel, how sharply access decays with distance, how providers are shared among
+competing neighborhoods, what counts as "adequate." Treat all of them as
+uncertain and the analysis becomes a study of modeling taste rather than of the
+data. So we draw a hard boundary.
+
+Exactly **two** input uncertainties are propagated, plus spatial smoothing:
+
+1. **Demand error** — the American Community Survey (ACS) estimate of the number
+   of children under five in each tract is a survey figure with a margin of
+   error, not a census count.
+2. **Capacity error** — a provider's licensed slots overstate the daytime
+   capacity actually offered to families; four statewide licensing surveys let us
+   calibrate that gap, but only at the sector level.
+
+Everything about the enhanced two-step floating catchment area (E2SFCA) access
+*design* — the 15-minute catchment, the stepped distance decay, the competition
+normalization — is held **fixed by construction**. Functional-form uncertainty
+(would a Gaussian decay, a different catchment, a gravity model change the
+conclusions?) is explicitly **out of scope** here and is deferred to a separate
+companion study. Naming this boundary is not a limitation to be apologized for;
+it is what lets the posterior desert probabilities mean one clean thing —
+*uncertainty due to the two inputs we can quantify, given the design we chose* —
+instead of an uninterpretable blend.
+
+## Step 0.2: auditing the inputs
+
+Before any of that, `scripts/00-2_audit_sources.R` establishes that the inputs
+are what we think they are. It opens the seven read-only P01 analytic assets,
+records a SHA-256 hash and byte size for each into `provenance/provenance.csv`,
+and independently re-derives the headline counts rather than trusting them:
+1,436 tracts, 294,417 children under five, 2,164 licensed providers, 117,062
+licensed day slots, and the 690 deterministic E2SFCA deserts this study sets out
+to probabilize. It confirms the Queen-contiguity graph structure — 2 islands and
+3 connected components over the full 1,436 tracts, collapsing to 1 island and 2
+components once the 27 zero-demand tracts are removed — so that @sec-model
+inherits a graph whose topology has already been checked.
+
+The step also reads the four restricted quarterly Department of Human Resources
+(DHR) survey workbooks, parses each sector-by-wave sheet into
+`provenance/survey_calibration.csv` (eight rows: four waves times two sectors),
+and runs a small five-node INLA BYM2 "smoke fit" to prove the compiled toolchain
+executes and can draw posterior samples on this machine. The survey workbooks are
+not redistributed; see the package's data-access statement for how to obtain
+them.
+
+## The fixed E2SFCA operator
+
+The E2SFCA score is the study's coverage measure: accessible provider slots per
+child. Its logic is two steps [@luo_measures_2003; @luo_enhanced_2009]. First,
+for each provider $j$ compute a provider-to-population ratio, dividing its
+capacity $S_j$ by the decay-weighted demand that can reach it. Second, for each
+tract $i$ sum those ratios over the providers within reach, again decay-weighted:
+
+$$
+R_j = \frac{S_j}{\sum_{i:\,d_{ij}\le 15} w(d_{ij})\,\hat D_i},
+\qquad
+\rho_i = \sum_{j:\,d_{ij}\le 15} w(d_{ij})\,R_j .
+$$
+
+Here $d_{ij}$ is the drive time in minutes, $\hat D_i$ the tract's under-five
+count, and $w(\cdot)$ a **stepped** distance-decay weight that captures declining
+willingness to travel [@luo_enhanced_2009; @wang_measurement_2012]:
+
+$$
+w(d) =
+\begin{cases}
+1    & 0 \le d \le 5,\\
+0.68 & 5 < d \le 10,\\
+0.22 & 10 < d \le 15,\\
+0    & d > 15 .
+\end{cases}
+$$
+
+The key observation for uncertainty propagation is that, with the catchment,
+decay, and competition weights held fixed, coverage is a **linear** function of
+capacity: $\rho = A\,S$ for a sparse matrix $A$ whose $(i,j)$ entry is
+$w(d_{ij})\big/\sum_{i'} w(d_{i'j})\hat D_{i'}$. Building that matrix once means a
+whole draw of provider capacities becomes a single sparse matrix–vector product.
+That is exactly what `build_fixed_e2sfca_operator()` in `R/fct_uncertainty.R`
+constructs, over the **47,670** tract–provider pairs that fall within 15 minutes:
+
+```r
+e2sfca_decay_weight <- function(minutes) {
+  ifelse(minutes <= 5, 1, ifelse(minutes <= 10, 0.68, ifelse(minutes <= 15, 0.22, 0)))
+}
+
+w <- e2sfca_decay_weight(pairs$minutes)
+weighted_demand <- numeric(length(provider_id))
+sums <- rowsum(demand_count[from] * w, group = to, reorder = FALSE)
+weighted_demand[as.integer(rownames(sums))] <- sums[, 1L]
+coefficient <- ifelse(weighted_demand[to] > 0, w / weighted_demand[to], 0)
+operator <- Matrix::sparseMatrix(
+  i = from, j = to, x = coefficient,
+  dims = c(length(demand_geoid), length(provider_id))
+)
+```
+
+The competition normalization uses the demand **point estimate** `demand_count`,
+which is what "holding the design fixed" means in practice: the catchment
+structure does not wobble from draw to draw. `scripts/01-2_supply_uncertainty.R`
+then checks that multiplying this operator by the licensed day capacities
+reproduces P01's published E2SFCA scores to better than $10^{-12}$ — a bit-level
+guarantee that we rebuilt the companion measure exactly, not approximately.
+
+Three anchors orient the scale. Statewide licensed capacity is
+$117{,}062 / 294{,}417 = 0.398$ slots per child. Routed through the fixed design,
+116,057 of those slots reach some tract within 15 minutes (1,005 lie beyond every
+tract's catchment), so the child-weighted mean fixed E2SFCA coverage is
+$116{,}057 / 294{,}417 = 0.394$. And **203** of the analysis tracts have no
+reachable capacity at all — structural zeros that will matter for the likelihood
+in @sec-model.
+
+## Demand uncertainty
+
+`scripts/01-1_demand_uncertainty.R` treats each eligible tract's under-five count
+as a draw from a truncated normal centered on the ACS estimate,
+
+$$
+D_t^{(s)} \sim \mathrm{TN}\!\left(\hat D_t,\, s_t^2;\ \text{lower}=1\right),
+\qquad
+s_t = \frac{\mathrm{MOE}_{90}}{1.645},
+$$
+
+converting the published 90% margin of error to a standard error with the normal
+critical value 1.645 [@spielman_patterns_2014]. Zero-demand tracts are a point
+mass at zero and are excluded from the model. Of the 1,409 eligible tracts,
+**605** have a demand coefficient of variation above 0.40 — the "high-CV"
+stratum where the survey is least certain and the propagated uncertainty will be
+widest. The generator is `draw_truncated_demand()`:
+
+```r
+demand_se_from_moe <- function(moe90, z = 1.645) moe90 / z
+
+draw_truncated_demand <- function(mean, se, n_draws, seed = 20260716L, lower = 0) {
+  set.seed(seed)
+  # tract-specific truncated normal; lower bound `lower`, upper Inf
+  truncnorm::rtruncnorm(n_draws * n, a = lower, b = Inf, mean = mean, sd = se)
+}
+```
+
+Notice the default lower bound is `0`, but the pipeline calls the function with
+`lower = 1`. That one-child floor is a **registered deviation**, decided and
+documented *before* any posterior was computed. (The seed shown is the helper's
+default; in the joint posterior of @sec-posterior the demand stream is drawn with
+its own seed, `20260717`, so it stays independent of the latent and capacity
+streams.) The reason is arithmetic: the
+coverage rate has demand in its denominator, so a draw near zero children makes
+the inverse-demand multiplier $\hat D_t / D_t^{(s)}$ explode. A preflight of the
+full draw grid — $1{,}409 \times 2{,}000 = 2{,}818{,}000$ draws — put 5,221 of
+them below one child, where that multiplier reached **128,027**. Left alone,
+those handful of draws would have dominated every summary that touches inverse
+demand. Truncating at one child keeps the inverse moments finite without
+distorting the bulk of any tract's distribution, and we recorded the change
+rather than applying it quietly. The demand draws themselves are not consumed
+here; they are combined with the latent field to form the joint posterior in
+@sec-posterior.
+
+## Capacity uncertainty
+
+Licensed slots are a ceiling, not an offering. Four quarterly DHR surveys measure
+how much daytime capacity providers actually report relative to their license,
+but they are **aggregate** workbooks: they identify sector-level quantities and
+carry no provider key. `scripts/01-2_supply_uncertainty.R` therefore builds a
+**hierarchical** capacity model, decomposing each provider's effective capacity
+into a fixed sector calibration, a shared sector-level temporal factor, and an
+independent provider residual:
+
+$$
+C_p^{(s)} = C_p^{\text{lic}} \times m_{g(p)} \times T_{g(p)}^{(s)} \times R_p^{(s)} .
+$$
+
+- $m_{g(p)}$ is the **sector calibration mean** — the average ability-to-licensed
+  ratio across the four waves: **0.874** for centers and **0.968** for homes.
+  (Family and group homes map to *Homes*; centers, faith-based, and excepted
+  programs map to *Centers*.)
+- $T_{g(p)}^{(s)}$ is a **shared temporal factor**, one mean-one lognormal value
+  drawn once per sector per draw and broadcast to every provider in that sector.
+  Its spread is the wave-to-wave variability of the sector mean — a coefficient
+  of variation of **0.046** for centers and **0.039** for homes. Because it is
+  shared, it induces cross-provider dependence within a sector: a "good quarter"
+  lifts the whole sector together.
+- $R_p^{(s)}$ is an **independent provider residual**, a mean-one lognormal with a
+  **preregistered** coefficient of variation of **0.15**. This is an assumption,
+  not an estimate: the aggregate surveys simply cannot identify provider-level
+  variance, so we fix a defensible value up front and hold it there rather than
+  tune it after seeing results.
+
+Mean-one lognormal draws use the standard construction — for a target coefficient
+of variation $c$, set $\sigma^2 = \log(1+c^2)$ and $\mu = -\sigma^2/2$ so that
+$\mathbb{E}[X]=1$ — implemented as two small helpers whose product with the fixed
+operator gives coverage-rate draws:
+
+```r
+lognormal_sigma_from_cv <- function(cv) sqrt(log1p(cv^2))
+
+draw_lognormal_multiplier <- function(n, cv, mean_multiplier = 1, seed = NULL) {
+  sigma <- lognormal_sigma_from_cv(cv)
+  stats::rlnorm(n, meanlog = log(mean_multiplier) - 0.5 * sigma^2, sdlog = sigma)
+}
+
+capacity <- providers$licensed_capacity *
+  providers$sector_mean_multiplier * residual * sector_common
+rates <- as.matrix(supply_object$operator %*% capacity)   # fixed operator A
+```
+
+Under the calibrated expectation alone (capacity $= C^{\text{lic}} \times m$),
+effective daytime supply is **102,699 slots — 12.3% below** the 117,062 licensed
+baseline. That gap is the substantive point of the whole capacity step: a desert
+map built on licensed slots quietly assumes an eighth of statewide capacity that
+families never see.
+
+## Freezing the specification
+
+The last preparatory step, `scripts/01-3_preregister_decisions.R`, writes down
+the primary analysis and hashes it *before* the model runs. This is what lets the
+paper claim it did not choose thresholds to produce a headline. The frozen
+primary specification is:
+
+```r
+primary <- list(
+  threshold_A     = 0.33,     # adequacy standard A (slots per child)
+  gamma           = 0,        # desert buffer
+  fdr_q           = 0.10,     # target expected false discovery rate
+  fdx_c           = 0.10,     # false discovery exceedance level
+  fdx_alpha       = 0.05,     # exceedance tail probability
+  county_weight   = "under5", # county rollups weighted by under-five population
+  posterior_draws = 2000L
+)
+```
+
+with the decision rule stated exactly as P01's: a tract is a desert **iff**
+$\rho < A - \gamma$, and equality is *non-desert*. The adequacy standard
+$A = 0.33$ and buffer $\gamma = 0$ reproduce the deterministic rule; the multiple-
+testing levels $q$, $c$, and $\alpha$ are the targets @sec-declarations will hold
+the desert declarations to. The table is written to
+`outputs/tables/PREREG_choices.csv` and SHA-256-hashed; @sec-model re-checks that
+hash before fitting, so any later edit to the specification breaks the pipeline
+loudly.
+
+Robustness is handled by **labeled sensitivity grids** that can accompany the
+primary but never replace it: $\gamma \in \{0, 0.03, 0.05\}$,
+$A \in \{0.25, 0.33, 0.50\}$, and county weights $\{\text{under-five, equal,
+area}\}$. Each grid contains the primary value as one of its points, and every
+row of the preregistration table is tagged `primary_locked` or
+`sensitivity_only` so the two can never be confused downstream.
+
+One further rule is frozen here: a **disclosure protocol**. A total of **46**
+tracts — the 27 zero-demand tracts plus 19 with fewer than ten children under
+five — are suppressed from every public display. This small-count masking is
+fixed at preregistration so that the exhibits in @sec-exhibits cannot become a
+back door to identifying individual families.
+
+## What this produces
+
+The three analytic objects live under the git-ignored `data/` tree, and the
+public, disclosure-safe aggregates ship separately under `data/derived/`:
+
+- `data/analytic/01_demand_uncertainty.rds` — demand means, standard errors,
+  eligibility, reliability tiers, and a fixed-seed draw audit.
+- `data/analytic/01_supply_uncertainty.rds` — the fixed E2SFCA operator, provider
+  calibration parameters, and per-tract capacity-rate summaries.
+- `data/analytic/01_prereg_region.rds` — the frozen primary and sensitivity
+  choices, the coverage anchors, and the preregistration hash.
+
+Human-readable summaries land under `outputs/tables/`
+(`01_demand_uncertainty_summary.csv`, `01_supply_uncertainty_summary.csv`,
+`PREREG_choices.csv`), provenance and the parsed survey calibration under
+`provenance/`, and every headline value is appended to the single-source-of-truth
+registry `outputs/key_numbers.csv`. With the design fixed, the two input
+distributions calibrated, and the specification locked and hashed, @sec-model can
+fit the spatial coverage model.

@@ -1,0 +1,3 @@
+"cv_tier","n_tracts","ambiguous_tracts","ambiguous_pct","median_desert_probability"
+"cv_le_0.40",804,262,32.5870646766169,0.7065
+"high_cv_gt_0.40",605,255,42.1487603305785,0.516

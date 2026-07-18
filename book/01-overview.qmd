@@ -1,0 +1,102 @@
+# Overview: the study in brief {#sec-overview}
+
+This chapter is the map of the territory. It states the problem the study
+addresses, sketches the approach, and lists the headline findings you will
+reproduce — so that when you read the method chapters you always know where a
+step is heading.
+
+## The problem
+
+A **child care desert** is a tract where the supply of child care is inadequate
+relative to the number of young children. The standard way to draw one is to
+compute an access score — here, an enhanced two-step floating catchment area
+(E2SFCA) score measuring accessible slots per child — and then apply a threshold:
+below $A = 0.33$ slots per child, a tract is a desert.
+
+That binary label is useful and consequential; it steers where public dollars
+go. But it hides two things. First, the inputs are uncertain: the count of young
+children is an American Community Survey (ACS) estimate with a margin of error,
+and the usable capacity of providers is measured with error. Second, a threshold
+turns a continuous, uncertain quantity into a hard yes/no that carries no sense
+of confidence. A tract just below the line and a tract far below it get the same
+label, even though our certainty about them is very different.
+
+This study keeps the access model exactly as it is and asks a sharper question:
+**for each tract, how sure are we that it is a desert, and which tracts can we
+declare with controlled error?**
+
+## The approach in one paragraph
+
+Hold the E2SFCA design fixed. Propagate the two dominant input uncertainties —
+ACS under-five **demand** error and survey-calibrated **capacity** error —
+through a Bayesian spatial coverage model: a Besag–York–Mollié (BYM2) model with
+a Tweedie likelihood, fit once by INLA. Draw 2,000 **joint posterior samples**
+that carry both the model's own uncertainty and the input uncertainties, and read
+off each tract's posterior probability of being a desert. Then feed those
+probabilities into **declaration procedures** that control the false discovery
+rate (FDR) and the false discovery exceedance (FDX) at preregistered levels, with
+county decisions weighted by the number of children under five. The result is a
+tiered policy product: a defensible core, an extended priority list, and an
+explicit agenda for where better data would matter most.
+
+Two design commitments make the study honest and reproducible, and you will see
+both enforced in the code:
+
+- **A fixed access model.** Only demand and capacity uncertainty (plus spatial
+  smoothing) are propagated; the catchment, decay, and competition design of the
+  E2SFCA score is held constant. Uncertainty in that *functional form* is a
+  different question and is out of scope (@sec-inputs).
+- **Preregistration.** The primary specification — the adequacy standard, the
+  error targets, the county weight — is frozen and SHA-256-hashed *before* any
+  model result is inspected (@sec-inputs). Alternatives are labeled sensitivity
+  analyses and never replace it.
+
+## The setting and the universe
+
+The study covers Alabama at the 2020 census-tract scale: 1,436 tracts across 67
+counties. Twenty-seven tracts have a zero ACS under-five estimate and are kept
+only for map topology, leaving **1,409 analysis tracts** and **294,417 children
+under five**. Supply is a fixed universe of **2,164 licensed providers** with
+**117,062 licensed daytime slots**. Demand comes from the ACS 2023 5-year
+estimates; capacity is calibrated with four quarterly provider surveys. The
+deterministic map that this study extends flags **690** point deserts, with a
+**519-tract** "always-desert" stability anchor used later for triangulation.
+
+## The findings you will reproduce
+
+The three research questions organize the method chapters and the exhibits.
+
+**RQ1 — Shortfalls are widespread but unevenly evidenced** (@sec-posterior).
+The median tract posterior desert probability is **0.611**, and 816 tracts exceed
+a probability of 0.50. But 517 tracts (36.7%) fall in an ambiguous 0.25–0.75
+band, and posterior intervals in the high-uncertainty demand stratum are more
+than twice as wide as elsewhere (relative width 6.71 vs 3.11).
+
+**RQ2 — Error control reclassifies the map, it does not merely shrink it**
+(@sec-declarations). A step-up procedure declares **512** tracts at
+$q = 0.10$; a stricter exceedance rule certifies a **412-tract** core. Of the 690
+deterministic deserts, **500 survive** (72.5%), **190** lose declarable status
+without being exonerated (their median desert probability is still 0.689), and
+**12** enter.
+
+**RQ3 — County decisions depend on the estimand; tract declarations are robust**
+(@sec-declarations). The child-weighted rule declares **13** of 67 counties;
+equal-tract and land-area weights give 9 and 19. Across the preregistered
+threshold grids the tract declarations move only with the policy dials, and 85.0%
+of the 519-tract stability anchor is FDR-declared.
+
+## What the pipeline looks like
+
+The analysis is eleven numbered steps, grouped into four stages. @sec-getting-started
+shows how to run them; the method chapters explain each one.
+
+| Stage | Steps | Chapter |
+|---|---|---|
+| Inputs and input uncertainty | 0.2, 1.1, 1.2, 1.3 | @sec-inputs |
+| The Bayesian spatial model | 2.1 | @sec-model |
+| Posterior propagation and desert probability | 2.2, 2.3 | @sec-posterior |
+| Error-controlled declarations | 3.1, 3.2, 3.3 | @sec-declarations |
+| Figures, tables, and the interactive map | 4.1 | @sec-exhibits |
+
+A single registry, `outputs/key_numbers.csv`, holds every headline value once;
+nothing downstream recomputes a number it can look up.

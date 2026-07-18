@@ -1,0 +1,225 @@
+# The Bayesian spatial coverage model {#sec-model}
+
+@sec-inputs left us with a fixed accessibility operator, calibrated
+distributions for demand and capacity, and a specification frozen and hashed
+before any result was seen. This chapter fits the one model that sits between
+those inputs and the desert probabilities: an intercept-only Besag–York–Mollié
+(BYM2) model that smooths tract coverage across the map. The work is a single
+call to `fit_coverage_bym2()` in `R/fct_bym2.R`, orchestrated by
+`scripts/02-1_fit_bym2.R`. It runs on the full-pipeline track only.
+
+## Why a spatial model
+
+Tract-level coverage is a noisy quantity. A tract with few children and one
+nearby provider can post an extreme E2SFCA score for reasons that are as much
+sampling accident as structural fact, and adjacent tracts — which share roads,
+providers, and demand — carry information about each other that a tract-by-tract
+reading throws away. A spatial model uses that information. It **borrows
+strength** across neighbors, pulling each tract's estimate partway toward its
+surroundings by an amount the data itself chooses.
+
+The BYM2 model does this while keeping two kinds of variation apart
+[@besag_bayesian_1991; @riebler_intuitive_2016]. Some variation is
+**structured** — smooth patterns shared by neighboring tracts, the signature of
+real regional differences in access. Some is **unstructured** — tract-specific
+noise with no spatial pattern. Separating them matters because only the
+structured part should be borrowed across the map; treating noise as signal would
+smear it into neighbors. The model estimates how much of the total variation is
+of each kind, rather than assuming it.
+
+## The response and the likelihood
+
+The response is the accessible-slot allocation the fixed operator sends to each
+tract under the survey-calibrated *expected* capacity, and the exposure is the
+ACS demand estimate. With a log link, a log-demand offset, and an intercept-only
+mean, the model is
+
+$$
+\log \mu_t = \log \hat D_t + \alpha + b_t ,
+$$
+
+so that $\mu_t / \hat D_t = \exp(\alpha + b_t)$ is the modeled coverage **rate**:
+the offset turns a model of allocated slots into a model of slots per child, and
+the spatial term $b_t$ does the smoothing. In `scripts/02-1_fit_bym2.R` the
+response and exposure are formed directly from the @sec-inputs objects:
+
+```r
+expected_capacity <- providers$licensed_capacity * providers$sector_mean_multiplier
+expected_rate_all <- as.numeric(supply_bundle$operator %*% expected_capacity)
+exposure <- demand$demand_mean[eligible]     # ACS point estimate D-hat
+response <- expected_rate_all[eligible] * exposure
+```
+
+The likelihood is a **Tweedie** compound Poisson–gamma,
+$Y_t \sim \mathrm{Tw}(\mu_t, \xi, \psi)$, with power parameter $1 < \xi < 2$
+[@jorgensen_exponential_1987]. This is a **registered deviation** from the
+planned Poisson likelihood, and the reason is that the response is continuous
+with exact zeros, not a count: **1,206** of the 1,409 tract responses are
+noninteger, and **203** are exact zeros (the structural zeros from @sec-inputs —
+tracts with no reachable capacity). A Tweedie with a power between one and two is
+built for exactly that shape — a positive continuous part with a spike of exact
+zeros — and it keeps the log-demand offset intact. The obvious workaround,
+rounding the allocations to integer counts so a Poisson would accept them, was
+**rejected**: it would alter the data to fit the model rather than choosing a
+model that fits the data. Under a full refit (Track A), the posterior means of
+the Tweedie parameters land near $\xi \approx 1.48$ (power) and $\psi \approx 3.56$
+(dispersion); these are diagnostics of the fitted model object rather than values
+in the shipped registry.
+
+This study departs from its preregistered plan in exactly two places, and it
+treats both as registered deviations — documented and motivated rather than
+quietly applied. The first, the one-child demand floor, we met in @sec-inputs.
+The second is this likelihood family. `scripts/02-1_fit_bym2.R` records it — the
+planned family, what was implemented, the trigger, the rejected workaround, and
+the scientific reason — to `outputs/tables/02_model_deviation_register.csv`.
+
+## The BYM2 spatial prior
+
+BYM2 is a reparameterization of the original Besag–York–Mollié model that makes
+its two components interpretable and gives them priors on a sensible scale
+[@riebler_intuitive_2016]. The spatial term is
+
+$$
+b = \frac{1}{\sqrt{\tau}}\left(\sqrt{1-\phi}\,v + \sqrt{\phi}\,u^{*}\right),
+$$
+
+where $v \sim \mathcal{N}(0, I)$ is the **unstructured** component, $u^{*}$ is a
+**scaled intrinsic conditional autoregressive** (CAR) field — the structured,
+spatially smooth component — and $\tau$ is a precision setting the overall
+magnitude. The single mixing parameter $\phi \in [0,1]$ is the fraction of
+variance that is spatially structured: $\phi$ near zero means the map is mostly
+noise, $\phi$ near one means it is mostly smooth regional pattern. Scaling $u^{*}$
+to unit generalized variance is what makes $\phi$ and $\tau$ comparable across
+different graphs [@riebler_intuitive_2016].
+
+We give the hyperparameters penalized-complexity (PC) priors, which shrink toward
+a simpler base model unless the data pulls away [@simpson_penalising_2017]. Two
+statements fix them: $P(\sigma > 1) = 0.01$ places a mild ceiling on the total
+standard deviation, and $P(\phi < 0.5) = 0.5$ is deliberately neutral about
+whether variation is structured or not.
+
+The neighborhood structure is a Queen-contiguity graph — tracts are neighbors if
+they share any boundary point — over the 1,409 eligible tracts. It has **8,418**
+directed links, a mean of **5.97** neighbors per tract, **1** island (a tract
+with no neighbors), and **2** connected components. `prepare_p07_graph()` builds
+it by subsetting the full graph audited at Step 0.2 down to the eligible tracts:
+
+```r
+model_nb <- spdep::subset.nb(full_nb, subset = eligible)   # 1,436 -> 1,409
+graph <- INLA::inla.read.graph(Matrix::Matrix(
+  spdep::nb2mat(model_nb, style = "B", zero.policy = TRUE), sparse = TRUE
+))
+```
+
+Because the graph has more than one component, the CAR scaling and the
+sum-to-zero identifiability constraint are applied **per connected component**,
+which the model formula requests explicitly with `scale.model = TRUE`,
+`adjust.for.con.comp = TRUE`, and `constr = TRUE`:
+
+```r
+formula <- y ~ 1 + offset(log(exposure)) + f(
+  idx,
+  model = "bym2",
+  graph = graph_info$inla_graph,
+  scale.model = TRUE,          # scale the CAR to unit generalized variance
+  adjust.for.con.comp = TRUE,  # scale and constrain per connected component
+  constr = TRUE,               # sum-to-zero on the structured field
+  hyper = list(
+    prec = list(prior = "pc.prec", param = c(1, 0.01)),  # P(sigma > 1) = 0.01
+    phi  = list(prior = "pc",      param = c(0.5, 0.5))  # P(phi < 0.5) = 0.5
+  )
+)
+```
+
+## Fitting with INLA
+
+We fit with integrated nested Laplace approximation (INLA), which computes
+accurate posterior marginals for latent Gaussian models like this one without
+Markov chain Monte Carlo [@rue_approximate_2009; @lindgren_bayesian_2015]. The
+results in the paper use **INLA 26.6.8** with an adaptive Gaussian
+approximation strategy, central-composite-design (CCD) integration over the
+hyperparameters, and METIS matrix reordering.
+
+INLA is fast, but out of the box it is not bit-reproducible, and for a
+replication package that is a problem worth solving carefully. The reason is that
+INLA does its heavy numerical work in an **external compiled binary** that can
+inherit multithreaded BLAS and OpenMP execution. When several threads reduce a
+sum of floating-point numbers, the order in which they finish is not fixed, and
+floating-point addition is not associative — so two runs on the same data can
+differ in the last digits, and those differences can nudge which hyperparameter
+integration configuration the algorithm selects. The fit therefore enforces a
+strict **determinism contract**: pin every threading environment variable to one,
+run INLA single-threaded (`num.threads = "1:1"`), and set the seed before the
+call.
+
+```r
+Sys.setenv(
+  OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1", MKL_NUM_THREADS = "1",
+  VECLIB_MAXIMUM_THREADS = "1", NUMEXPR_NUM_THREADS = "1"
+)
+INLA::inla.setOption(num.threads = "1:1", blas.num.threads = 1L)
+set.seed(20260716L)
+
+fit <- INLA::inla(
+  formula, family = "tweedie", data = model_data,
+  control.predictor = list(compute = TRUE),
+  control.compute   = list(config = TRUE, dic = TRUE, waic = TRUE, cpo = TRUE),
+  control.inla      = list(strategy = "adaptive", int.strategy = "ccd",
+                           stupid.search = FALSE, reordering = "metis"),
+  num.threads = "1:1", verbose = FALSE
+)
+```
+
+Serial execution trades a little speed for exact reproducibility: on frozen
+inputs the fit returns the same numbers every time, and a refit under a different
+linear-algebra backend reproduces them up to negligible drift. @sec-reproducibility
+lays out the full seed ledger and the manifest that checks it.
+
+## Diagnostics
+
+The posterior hyperparameters tell a clear story. The total standard deviation is
+$\sigma = 0.976$, the precision is $\tau = 1.059$, and the mixing parameter is
+$\phi = 0.992$ — meaning the coverage surface is **almost entirely spatially
+structured**. Alabama's access geography is smooth regional pattern, not
+tract-level noise, which is precisely the setting in which borrowing strength
+helps.
+
+One subtlety is worth pausing on, because the code goes out of its way to get it
+right. The posterior mean of $\sigma$ is **not** the inverse square root of the
+posterior mean precision — that would confuse $\mathbb{E}[1/\sqrt{\tau}]$ with
+$1/\sqrt{\mathbb{E}[\tau]}$, which are different because the transform is
+nonlinear. `extract_bym2_hyperparameters()` instead transforms the whole
+precision marginal and takes the expectation on the correct scale:
+
+```r
+sigma_marginal <- INLA::inla.tmarginal(function(x) 1 / sqrt(x), precision_marginal)
+sigma_mean     <- INLA::inla.emarginal(function(x) x, sigma_marginal)
+```
+
+The fit is sound by the usual checks. The posterior fitted coverage tracks the
+input coverage closely — Spearman rank correlation **0.934** — confirming the
+smoother reorders very few tracts. Model-comparison scores are DIC
+**13,317.9** and WAIC **13,262.6**, and there are **0** conditional predictive
+ordinate (CPO) failures, so no observation is left unexplained by its own
+predictive distribution. These land in `outputs/tables/02_bym2_hyperparameters.csv`
+and `outputs/tables/02_bym2_diagnostics.csv`, and the likelihood deviation is
+logged in `outputs/tables/02_model_deviation_register.csv`.
+
+## What this produces
+
+The fitted model is saved as one analytic object under the git-ignored `data/`
+tree, `data/analytic/02_bym2_fit.rds`. It bundles the INLA fit itself, the
+per-tract model data (GEOID, response, exposure, input rate, and posterior fitted
+rate), the graph audit, the priors, the likelihood record, the extracted
+hyperparameters and diagnostics, and a SHA-256 ledger of every input it consumed
+— including the preregistration hash re-checked before the fit. The three
+human-readable tables ship under `outputs/tables/`
+(`02_bym2_hyperparameters.csv`, `02_bym2_diagnostics.csv`,
+`02_model_deviation_register.csv`), and the key posterior quantities are appended
+to `outputs/key_numbers.csv`.
+
+This is a single fit — one latent Gaussian field, conditional on the input point
+estimates. It is not yet the answer. @sec-posterior takes this fit and draws from
+it jointly with the demand and capacity distributions of @sec-inputs, propagating
+all three sources of uncertainty at once into the per-tract desert probabilities
+that the declaration stage in @sec-declarations then acts on.

@@ -1,0 +1,4 @@
+"weight_scheme","n_declared","overlap_with_primary","additions_vs_primary","removals_vs_primary","jaccard_vs_primary","achieved_mean_lis","role"
+"under5",13,13,0,0,1,0.0989931345482587,"primary_locked"
+"equal",9,8,1,5,0.571428571428571,0.0983861212861213,"sensitivity_only"
+"area",19,12,7,1,0.6,0.098004627335004,"sensitivity_only"

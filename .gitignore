@@ -1,0 +1,77 @@
+# =============================================================================
+# .gitignore for the P07 replication package.
+#
+# Philosophy: this study analyzes CONFIDENTIAL administrative data, so the rules
+# below block anything that could carry restricted content by default, then ship
+# only what is safe: the code, the documentation, and the disclosure-safe
+# aggregate results. When in doubt, a file stays ignored.
+#
+# What IS shipped: scripts/, R/, the Quarto guide in book/, the aggregate result
+# figures/tables in outputs/ and results/, the tidy aggregate layer in
+# data/derived/, provenance/, manifest/, verification/, and the READMEs.
+# What is NEVER shipped: any serialized data object (*.rds etc.), the restricted
+# source inputs, provider coordinates, and secrets. See data/DATA_ACCESS.md.
+# =============================================================================
+
+# --- Serialized data objects: NEVER commit (defense in depth) ----------------
+# The pipeline's inputs and intermediate objects are R/Arrow binaries that can
+# carry provider-level or record-level content (e.g. the geocoded supply file,
+# the raw 1,409 x 2,000 posterior draw matrix). None is shipped. The results
+# that ARE shipped are CSV / GeoJSON / TeX / HTML / PDF / PNG, untouched by
+# these rules.
+*.rds
+*.parquet
+*.feather
+*.dta
+*.RData
+*.rdata
+
+# --- The data/ tree is protected --------------------------------------------
+# Ignore everything under data/ EXCEPT the disclosure-safe aggregate layer
+# (data/derived/, which holds only CSV/GeoJSON aggregates) and the READMEs.
+data/**
+!data/
+!data/*.md
+!data/derived/
+!data/derived/**
+# ...but even inside data/derived/, never admit a raw binary data format.
+data/derived/**/*.parquet
+data/derived/**/*.dta
+data/derived/**/*.rdata
+
+# --- Restricted source data: NEVER commit (see data/DATA_ACCESS.md) ----------
+# The entire restricted-data/ tree is ignored except its README (the data
+# contract). Obtain the DHR/Melissa/public source assets yourself and place
+# them here (or point the environment variables at them); nothing here is ever
+# distributed.
+/restricted-data/*
+!/restricted-data/README.md
+
+# --- API keys / secrets: NEVER commit ----------------------------------------
+*api_key*
+*census_key*
+.Renviron
+.env
+
+# --- R session / build artifacts ---------------------------------------------
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.Rapp.history
+*.Rcheck/
+*.tar.gz
+Rplots.pdf
+
+# --- Quarto / rendered site artifacts ----------------------------------------
+/book/_book/
+/book/_freeze/
+/book/.quarto/
+.quarto/
+/_book/
+
+# --- OS / editor -------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*~
+*.swp
